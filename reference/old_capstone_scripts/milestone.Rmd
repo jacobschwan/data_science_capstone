@@ -1,0 +1,173 @@
+---
+title: 'Milestone Report: SwiftKey Capstone'
+author: "Jacob Schwan"
+date: "3/20/2016"
+output: html_document
+---
+```{r SetOptions, include=FALSE}
+knitr::opts_chunk$set(message=FALSE, warning=FALSE)
+```
+
+# Introduction
+The ultimate goal of this project is to build an application using the Shiny
+platform to predict the next word typed in a sentence.  To accomplish this we 
+will start by exploring the source data provided by the course.
+
+# Source Data Summary
+
+The data for this project is provided by [SwiftKey](https://swiftkey.com/en).
+The data is comprised of three files covering blog entries, news reports, and
+tweets.
+
+```{r Required Libraries}
+setMKLthreads(1)
+library(tm)
+library(RWeka)
+library(qdap)
+library(ggplot2)
+library(wordcloud)
+```
+
+```{r Download Source Data}
+datadir <- "final/en_US/"
+if(!file.exists(paste0(datadir,"en_US.blogs.txt")) |
+       !file.exists(paste0(datadir,"en_US.news.txt")) |
+       !file.exists(paste0(datadir,"en_US.twitter.txt"))) {
+    dataset="https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip"
+    download.file(url = dataset, destfile = "Coursera-SwiftKey.zip")
+    unzip("Coursera-SwiftKey.zip")
+       }
+```
+
+```{r Load Raw Souce Data}
+blogsRAW <- readLines(paste0(datadir,"en_US.blogs.txt"))
+newsRAW <- readLines(paste0(datadir,"en_US.news.txt"))
+twitterRAW <- readLines(paste0(datadir,"en_US.twitter.txt"))
+```
+
+Let's look at some basic characteristics of our data files.
+
+```{r Source Data Summary}
+#File Sizes
+blogSize <- file.size(paste0(datadir,"en_US.blogs.txt"))/(2^20)
+newsSize <- file.size(paste0(datadir,"en_US.news.txt"))/(2^20)
+twitterSize <- file.size(paste0(datadir, "en_US.twitter.txt"))/(2^20)
+totalSize <- blogSize + newsSize + twitterSize
+
+#Number of lines per file
+blogLines <- length(blogsRAW)
+newsLines <- length(newsRAW)
+twitterLines <- length(twitterRAW)
+totalLines <- blogLines + newsLines + twitterLines
+
+```
+
+|File           |Size (MB)   |Lines        |
+|--------------:|-----------:|------------:|
+|en_US.blogs.txt|`r blogSize`|`r blogLines`|
+|en_US.news.txt |`r newsSize`|`r newsLines`|
+|en_US.twitter.txt|`r twitterSize`|`r twitterLines`|
+|TOTALS         |`r totalSize`|`r totalLines`|
+
+# Exploratory Analysis
+
+## Prepare Data
+Due to the large nature of our data sources, we will use a random sample of 100 
+lines from each file to use as our exploratory corpus. We will then separate the 
+data into sentances and clean it for unwanted punctuation, numbers, and profanity.
+
+```{r Build Sample Corpus}
+set.seed(11885)
+blogSample <- blogsRAW[sample(length(blogsRAW), size=100)]
+newsSample <- newsRAW[sample(length(newsRAW), size=100)]
+twitterSample <- twitterRAW[sample(length(twitterRAW), size=100)]
+combineSample <- c(blogSample, newsSample, twitterSample)
+combineSample <- sent_detect(combineSample, language="en", model=NULL)
+corpus <- Corpus(VectorSource(combineSample))
+```
+
+```{r Scrub Corpus}
+removeURLs <- function(x) {gsub("http[[:alnum:]]*","",x)}
+
+corpus <- tm_map(corpus, PlainTextDocument)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, stripWhitespace)
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, content_transformer(removeURLs))
+corpus <- tm_map(corpus, removeWords, stopwords("english"))
+```
+
+```{r Remove Profanity}
+badWordsURL <- "https://raw.githubusercontent.com/shutterstock/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/master/en"
+download.file(url = badWordsURL,destfile = "badWords.txt",method = "curl")
+badWords <-readLines("badWords.txt")
+corpus <- tm_map(corpus, removeWords, badWords)
+```
+
+##Examine Word Frequency
+Next we will examine word frequencies at 1,2,&3 N-gram levels
+
+```{r Build Term Document Martices}
+oneGramTokenize <- function(x) {NGramTokenizer(x, Weka_control(min=1,max=1))}
+twoGramTokenize <- function(x) {NGramTokenizer(x, Weka_control(min=2,max=2))}
+threeGramTokenize <- function(x) {NGramTokenizer(x, Weka_control(min=3,max=3))}
+
+tdm1 <- TermDocumentMatrix(corpus, control = list(tokenize=oneGramTokenize))
+tdm2 <- TermDocumentMatrix(corpus, control = list(tokenize=twoGramTokenize))
+tdm3 <- TermDocumentMatrix(corpus, control = list(tokenize=threeGramTokenize))
+```
+
+```{r Build Word Frequency Tables}
+wordFreq1 <- sort(rowSums(as.matrix(tdm1)), decreasing=TRUE)
+wordFreq2 <- sort(rowSums(as.matrix(tdm2)), decreasing=TRUE)
+wordFreq3 <- sort(rowSums(as.matrix(tdm3)), decreasing=TRUE)
+```
+
+```{r N-Gram Properties}
+oneLength <- length(wordFreq1)
+twoLength <- length(wordFreq2)
+threeLength <- length(wordFreq3)
+```
+
+###Tokens for each N-Gram Size
+One-Gram: `r oneLength`
+Two-Gram: `r twoLength`
+Three-Gram: `r threeLength`
+
+###Frequencies of Each Token
+
+```{r Histograms of Word Frequency}
+qplot(names(wordFreq1)[order(wordFreq1)],wordFreq1, main="One N-Gram Token Frequency", geom="bar", stat="Identity", xlab="One N-Gram Tokens", ylab="Frequency")
+qplot(names(wordFreq2)[order(wordFreq2)],wordFreq2, main="Two N-Gram Token Frequency", geom="bar", stat="Identity", xlab="Two N-Gram Tokens", ylab="Frequency")
+qplot(names(wordFreq3)[order(wordFreq3)],wordFreq3, main="One N-Gram Token Frequency", geom="bar", stat="Identity", xlab="Three N-Gram Tokens", ylab="Frequency")
+```
+
+As shown above, few words comprise the bulk of the tokens.  This will be useful
+in buidling our predictive model.
+
+###Top 50 Tokens
+
+#### One N-Gram
+```{r One N-Gram Cloud}
+wordcloud(names(wordFreq1), wordFreq1, random.order=F, min.freq=1, max.words=50)
+```
+#### Two N-Gram
+```{r Two N-Gram Cloud}
+twoCloud <- wordcloud(names(wordFreq2), wordFreq2, random.order=F, min.freq=1, max.words=50)
+```
+#### Three N-Gram
+```{r Three N-Gram Cloud}
+threeCloud <- wordcloud(names(wordFreq3), wordFreq3, random.order=F, min.freq=1, max.words=50)
+```
+
+# Next Steps Towards App
+The next steps towards building the final application are:
+
+*  Examine potential predictive models
+*  Optimize a model for low resources
+*  Build Shiny App
+
+
+
+

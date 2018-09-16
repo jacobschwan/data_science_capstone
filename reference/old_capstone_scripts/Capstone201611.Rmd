@@ -1,0 +1,470 @@
+---
+title: "Coursera Data Science Specialization Capstone Project"
+output: html_notebook
+---
+
+# Task 0: Understanding the Problem
+
+[Coursera Assignment Page](https://www.coursera.org/learn/data-science-project/supplement/Iimbd/task-0-understanding-the-problem)
+
+Resource Links:
+- [Dataset Link](https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip)
+- [HC Corpora Readme](http://www.corpora.heliohost.org/aboutcorpus.html)
+- [Natural language processing Wikipedia page](https://en.wikipedia.org/wiki/Natural_language_processing)
+- [Text mining infrastructure in R](http://www.jstatsoft.org/v25/i05/)
+- [CRAN Task View: Natural Language Processing](http://cran.r-project.org/web/views/NaturalLanguageProcessing.html)
+- [Coursera course on NLP (not in R)](https://www.coursera.org/course/nlp)
+- [Tidy Text Mining with R](http://tidytextmining.com/)
+
+## Tasks to Accomplish
+
+1. Download the data and load/manipulate it in R
+2. Learn about the basics of natural language processing and how it relates to
+    the data science process you have learned in the Data Science Specialization.
+
+### Download the data and load/manipulate it in R
+
+```{r libraries, message=FALSE}
+library(tidyverse)
+library(tidytext)
+```
+```{r download_data}
+data_source <- "https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip"
+
+if(!file.exists("Coursera-SwiftKey.zip")) {
+    download.file(url = data_source,
+                  destfile = "Coursera-SwiftKey.zip")
+    unzip("Coursera-SwiftKey.zip")
+}
+dir(recursive = T)
+```
+```{r read_data0}
+data_dir <- "final/en_US/"
+data_files <- dir(data_dir)
+blogs <- read_lines(paste0(data_dir,data_files[1]))
+news <- read_lines(paste0(data_dir,data_files[2]))
+twitter <- read_lines(paste0(data_dir,data_files[3]))
+```
+```{r read_data1}
+str(blogs)
+summary(blogs)
+head(blogs)
+```
+```{r read_data2}
+str(news)
+summary(news)
+head(news)
+```
+```{r read_data3}
+str(twitter)
+summary(twitter)
+head(twitter)
+```
+
+## Questions to Consider
+
+#### 1. What do the data look like?
+
+The data is stored in text files, with one line per entry. The data is available
+in English (EN), German (DE), Finnish (FI), and Russian (RU).  There is on folder
+per language and three files per folder.  Each folder contains a blogs, news, and
+twitter text file.
+
+#### 2. Where do the data come from?
+
+The data comes from publicly available news websites, blogs, and tweets.  A web
+crawler automaticly scrapes and sort the data per the [HC Corpora readme](http://www.corpora.heliohost.org/aboutcorpus.html).
+
+#### 3. Can you think of any other data sources that might help you in this project?
+
+Useful auxiliary data sources may include a listing of vulgar or profane words
+that shouldn't be used during analysis and a list of stopwords.  Stopwords are
+common words required for grammer that don't add much to the meaning of text - 
+e.g. and, the, a, was, etc.
+
+#### 4. What are the common steps in natural language processing?
+
+1. Import data
+2. Clean data - remove punctuation, stopwords, or other undesireable characters. 
+3. Tokenize data - slice into 1, 2, or n word groupings
+4. Analyze tokenized data 
+5. Model data
+
+#### 5. What are some common issues in the analysis of text data?
+
+Common issues may include dealing with misspelt words, use of non-alphabetic
+characters ot express words, and use of word modifiers to change meanings - e.g.
+not surprised vs. surprised.
+
+#### 6. What is the realtionship between NLP and the concepts you have learned in the Specialization?
+
+NLP uses the same basic step as other exploratory data analysis in this course.
+The data must be treated slightly different, but the basic steps of import, clean,
+explore, and model are the same.  In addition, many of the exploratory data analysis
+and modeling techniques can be applied to natural language processing.
+
+# Task 1: Getting and Cling the Data
+
+[Coursera Assignment Page](https://www.coursera.org/learn/data-science-project/supplement/IbTUL/task-1-getting-and-cleaning-the-data)
+
+## Tasks to Accomplish
+
+1. Tokenization - identifying appropriate tokens such as words, punctuation, and
+    numbers. Writing a function that takes a file as input and returns a tokenized
+    version of it.
+    
+2. Profanity filtering - removing profanity and other words you do not want to
+    predict.
+    
+*Hints:* Create and save samples of the data
+    
+### Generate Random Subset of Data
+```{r sample_data0, eval=FALSE}
+#Generate a sub sample of the data or read in existing samples
+
+if(!file.exists("blogs.sample.txt") |
+   !file.exists("news.sample.txt") |
+   !file.exists("twitter.sample.txt")) {
+    set.seed(11885)
+    
+    #Select a 0.1% selection of random entries from each data source
+    blog_sample <- blogs[sample(length(blogs), size = .001*length(blogs))]
+    news_sample <- news[sample(length(news), size = .001*length(news))]
+    twitter_sample <- twitter[sample(length(twitter), size = .001*length(twitter))]
+    
+    #Save sample selections for later study & easy retrieval 
+    write_lines(blog_sample, "blogs.sample.txt")
+    write_lines(news_sample, "news.sample.txt")
+    write_lines(twitter_sample, "twitter.sample.txt")
+} else {
+    blog_sample <- read_lines("blogs.sample.txt")
+    news_sample <- read_lines("news.sample.txt")
+    twitter_sample <- read_lines("twitter.sample.txt")
+}
+
+#Remove full data sets to save memory
+rm(blogs, news, twitter)
+```
+
+
+### Tokenization
+
+The [tidytext](https://cran.r-project.org/web/packages/tidytext/index.html)
+package will be used to tokenize the data into individual words,
+remove punctuation, and change all words to lower case.  This is all accomplished
+with the `unnest_tokens()` command.  The result will be a tidy data set indicating
+the line of origin and data source (blog, news, or twitter).
+
+```{r tokenization0}
+blog_tokens <- data_frame(entry = seq(1:length(blog_sample)), text=blog_sample) %>%
+    unnest_tokens(word,text) %>% mutate(source = "blogs")
+news_tokens <- data_frame(entry = seq(1:length(news_sample)), text=news_sample) %>%
+    unnest_tokens(word,text) %>% mutate(source = "news")
+twitter_tokens <- data_frame(entry = seq(1:length(twitter_sample)), text=twitter_sample) %>%
+    unnest_tokens(word,text) %>% mutate(source = "twitter")
+data_tokens <- rbind(blog_tokens,news_tokens,twitter_tokens)
+head(data_tokens)
+str(data_tokens)
+```
+
+### Profanity Filtering
+
+Profanity filtering will be accomplished with the same technique as removing
+stop words.  Profain terms come from the
+[List of Dirty, Naughty, Obscene, and Otherwise Bad Words](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/blob/master/README.md)
+provided by [Shutterstock](http://www.shuttertock.com) in a GitHub repository.
+The list is provided in simple text with one line per term/phrase. 
+
+Since the data is already tokenized before filtering, only one word profanities
+will be removed. Multi-word profanities would need to be removed prior to tokenization.
+Potential method if necessary would involve using `gsub()` to remove the phrases.
+
+```{r filter_profanity0}
+profanity_url <- "https://raw.githubusercontent.com/shutterstock/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/master/en"
+if(!file.exists("badWords.txt")) {
+    download.file(profanity_url,"badWords.txt")
+}
+bad_words <- data_frame(word = read_lines("badWords.txt"))
+data_tokens <- data_tokens %>% anti_join(bad_words)
+str(data_tokens)
+head(data_tokens)
+```
+
+# Quiz 1: Getting Started
+
+### The en_US.blogs.txt  file is how many megabytes?
+```{r}
+file.size("final/en_US/en_US.blogs.txt")/1024^2
+```
+
+### The en_US.twitter.txt has how many lines of text?
+```{r}
+length(read_lines("final/en_US/en_US.twitter.txt"))
+```
+
+### What is the length of the longest line seen in any of the three en_US data sets?
+```{r}
+maxLine <- bind_rows(data_frame(source = "blogs",
+                                text = read_lines("final/en_US/en_US.blogs.txt")),
+                     data_frame(source = "news",
+                                text = read_lines("final/en_US/en_US.news.txt")),
+                     data_frame(source = "twitter",
+                                text = read_lines("final/en_US/en_US.twitter.txt"))
+                     ) %>% mutate(chars = nchar(text))
+filter(maxLine, chars == max(chars)) %>% select(source,chars)
+```
+
+### In the en_US twitter data set, if you divide the number of lines where the word "love" (all lowercase) occurs by the number of lines the word "hate" (all lowercase) occurs, about what do you get?
+```{r}
+twitter <- maxLine %>% filter(source == "twitter")
+sum(grepl("love",twitter$text))/sum(grepl("hate",twitter$text))
+```
+
+### The one tweet in the en_US twitter data set that matches the word "biostats" says what?
+```{r}
+grep("biostats",twitter$text,value = T)
+```
+
+### How many tweets have the exact characters "A computer once beat me at chess, but it was no match for me at kickboxing". (I.e. the line matches those characters exactly.)
+```{r}
+sum(twitter$text == "A computer once beat me at chess, but it was no match for me at kickboxing")
+```
+
+# Task 2: Exploratory Data Analysis
+
+[Coursera Assignment Page](https://www.coursera.org/learn/data-science-project/supplement/BePVz/task-2-exploratory-data-analysis)
+
+## Tasks to Accomplish
+
+1. **Exploratory analysis** - perform a thorough exploratory analysis of the data, understanding the distribution of words and relationship between the words in the corpora.
+
+2. **Understand frequencies of words and word pairs** - build figures and tables to understand variation in the frequencies of words and word pairs in the data.
+
+### Questions to Consider
+
+1. Some words are more frequent than others - what are the distributions of word
+    frequencies?
+2. What are the frequencies of 2-grams and 3-grams in the dataset?
+3. How many unique words do you need in a frequency sorted dictionary to cover
+    50% of all word instances in the language? 90%?
+4. How do you evaluate how many of the words come from foreign languages?
+5. Can you think of a way to increase the coverage -- identifying words that may
+    not be in the corpora or using a smaller number of words in the dictionary 
+    to cover the same number of phrases?
+
+## Exploratory Analysis
+
+In Task 1 above, a table of single words, filtered for profanity, was produced.
+Next let's calculate the frequencies of each word in our data set.  We will use
+
+### Frequency of Single Words
+
+```{r exploratory0}
+onegrams <- data_tokens %>% select(source, entry, word) %>%
+    count(source, word, sort = TRUE) %>%
+    ungroup()
+total_words <- onegrams %>%
+    group_by(source) %>%
+    summarize(total = sum(n))
+onegrams <- left_join(onegrams, total_words)
+onegrams
+```
+
+```{r exploratory1}
+library(ggplot2)
+
+ggplot(onegrams, aes(n/total, fill = source)) +
+    geom_histogram(alpha = 0.8, show.legend = FALSE) +
+    facet_wrap(~source, ncol = 2, scales = "free_y") +
+    labs(title= "Term Frequency Distribution in Data Sets")
+```
+The above shows that most of the unique words in our data set occur very rarely.
+We see that news articles appear to have the most diversity of words, followed by
+twitter and then blogs.
+
+Let's see if this changes when we combine the three sources.
+```{r exploratory2}
+onegram_words <- data_tokens %>% select(source, entry, word) %>%
+    count(word, sort = TRUE) %>%
+    ungroup()
+onegram_words$total <- sum(onegram_words$n)
+
+ggplot(onegrams, aes(n/total)) +
+    geom_histogram(alpha = 0.8, show.legend = FALSE) +
+    labs(title= "Term Frequency Distribution in Data Sets") 
+```
+Again, we see that most unique words do not occur very often.
+
+```{r exploratory3}
+onegram_words <- onegram_words %>% mutate(percent_corpa = cumsum(n)/total)
+
+onegram_50 <- onegram_words %>% filter(percent_corpa <= .5)
+nrow(onegram_50)
+nrow(onegram_50)/onegram_50$total[1]
+
+onegram_90 <- onegram_words %>% filter(percent_corpa <= .9)
+nrow(onegram_90)
+nrow(onegram_90)/onegram_90$total[1]
+
+```
+```{r}
+ggplot(onegram_words, aes(x=seq(1:nrow(onegram_words)),y=percent_corpa)) +
+           geom_line()
+```
+
+We only need `r nrow(onegram_50)` words to cover 50% of the words used in our
+data set.  This is only `r nrow(onegram_50)/onegram_50$total[1]` of the unique
+words in our data set.  To get to 90% of the words used we only need
+`r nrow(onegram_90)`, or `r nrow(onegram_90)/onegram_90$total[1]`.  With less
+than 5% of the unique words we can cover most of our corpa. Our final model 
+should end up weighing these words more heavily than others. 
+
+In addition, the benefit from adding more words starts to reduce around 75% of
+the corpora, `r onegram_words %>% filter(percent_corpa < .75) %>% nrow()`
+
+### Frequency of Bigrams and Trigrams
+
+First we'll need to tokenize our bigrams and trigrams and then filter out
+profanity.
+
+```{r exploratory4}
+bigrams <- rbind(
+    data_frame(entry = seq(1:length(blog_sample)), text=blog_sample) %>%
+        unnest_tokens(bigram, text, token = "ngrams", n=2) %>%
+        mutate(source = "blogs"),
+    data_frame(entry = seq(1:length(news_sample)), text=news_sample) %>%
+        unnest_tokens(bigram, text, token = "ngrams", n=2) %>%
+        mutate(source = "news"),
+    data_frame(entry = seq(1:length(twitter_sample)), text=twitter_sample) %>%
+        unnest_tokens(bigram, text, token = "ngrams", n=2) %>%
+        mutate(source = "twitter")
+)
+bigrams
+```
+
+```{r exploratory5}
+#Remove bigrams that appear on the our bad words list
+bigrams <- anti_join(bigrams,bad_words,by = c("bigram" = "word")) %>%
+    select(source,entry,bigram)
+
+#Split bigrams for removal of single words on bad word list
+bigrams <- bigrams %>%
+    separate(bigram, c("word1", "word2"), sep=" ",remove = F) %>%
+#    filter(!word1 %in% stop_words$word) %>%
+#    filter(!word2 %in% stop_words$word) %>%
+    filter(!word1 %in% bad_words$word) %>%
+    filter(!word2 %in% bad_words$word)
+bigrams
+
+```
+
+```{r exploratory6}
+bigrams <- bigrams %>% count(source, word1, word2, sort=T)
+
+total_bigrams <- bigrams %>% group_by(source) %>%
+    summarise(total = sum(n))
+
+bigrams <- left_join(bigrams, total_bigrams)
+bigrams
+
+ggplot(bigrams, aes(n/total, fill = source)) +
+    geom_histogram(alpha = 0.8, show.legend = FALSE) +
+    facet_wrap(~source, ncol = 2, scales = "free_y") +
+    labs(title= "Bigram Frequency Distribution in Data Sets")
+```
+The twitter data set appears to show and opposite pattern.
+
+```{r}
+bigrams %>% filter(source == "twitter") %>% arrange(desc(n))
+table(bigrams$n[bigrams$source=="twitter"])
+```
+
+
+```{r exploratory7}
+bigrams <- bigrams %>%
+    ungroup %>%
+    mutate(all_total = sum(n))
+
+ggplot(bigrams, aes(n/all_total)) +
+    geom_histogram(alpha=0.8, show.legend = F) +
+    labs(title= "Bigram Frequency Distribution in Data Sets")
+```
+
+```{r}
+bigrams <- bigrams %>% arrange(desc(n)) %>% 
+    mutate(percent_corpora = cumsum(n)/all_total)
+
+ggplot(bigrams, aes(x=seq(1:nrow(bigrams)),y=percent_corpora)) +
+    geom_line() + geom_vline(xintercept = sum(bigrams$n > 1))
+```
+
+Our drop off in return occurs much sooner for bigrams and appears much more
+suddenly. This is most likely the point where only one bigram of each bigram
+exists, `r sum(bigrams$n > 1)`
+
+
+```{r exploratory8}
+trigrams <- rbind(
+    data_frame(entry = seq(1:length(blog_sample)), text=blog_sample) %>%
+        unnest_tokens(trigram, text, token = "ngrams", n=3) %>%
+        mutate(source = "blogs"),
+    data_frame(entry = seq(1:length(news_sample)), text=news_sample) %>%
+        unnest_tokens(trigram, text, token = "ngrams", n=3) %>%
+        mutate(source = "news"),
+    data_frame(entry = seq(1:length(twitter_sample)), text=twitter_sample) %>%
+        unnest_tokens(trigram, text, token = "ngrams", n=3) %>%
+        mutate(source = "twitter")
+)
+trigrams
+```
+
+
+```{r exploratory9}
+#Remove bigrams that appear on the our bad words list
+trigrams <- anti_join(trigrams,bad_words,by = c("trigram" = "word")) %>%
+    select(source,entry,trigram)
+
+#Split bigrams for removal of single words on bad word list
+trigrams <- trigrams %>%
+    separate(trigram, c("word1", "word2", "word3"), sep=" ",remove = F) %>%
+#    filter(!word1 %in% stop_words$word) %>%
+#    filter(!word2 %in% stop_words$word) %>%
+    filter(!word1 %in% bad_words$word) %>%
+    filter(!word2 %in% bad_words$word) %>%
+    filter(!word3 %in% bad_words$word)
+trigrams
+
+```
+
+```{r exploratory10}
+trigrams <- trigrams %>% count(source, word1, word2, word3, sort=T)
+
+total_trigrams <- trigrams %>% group_by(source) %>%
+    summarise(total = sum(n))
+
+trigrams <- left_join(trigrams, total_bigrams)
+trigrams
+
+ggplot(trigrams, aes(n/total, fill = source)) +
+    geom_histogram(alpha = 0.8, show.legend = FALSE) +
+    facet_wrap(~source, ncol = 2, scales = "free_y") +
+    labs(title= "Trigram Frequency Distribution in Data Sets")
+```
+
+```{r exploratory11}
+trigrams <- trigrams %>%
+    ungroup %>%
+    mutate(all_total = sum(n))
+
+ggplot(trigrams, aes(n/all_total)) +
+    geom_histogram(alpha=0.8, show.legend = F) +
+    labs(title= "Trigram Frequency Distribution in Data Sets")
+```
+
+```{r}
+trigrams <- trigrams %>% arrange(desc(n)) %>% 
+    mutate(percent_corpora = cumsum(n)/all_total)
+
+ggplot(trigrams, aes(x=seq(1:nrow(trigrams)),y=percent_corpora)) +
+    geom_line() + geom_vline(xintercept = sum(trigrams$n > 1))
+```
