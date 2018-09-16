@@ -1,0 +1,94 @@
+---
+title: "Task 0: Understanding the Problem"
+output: html_notebook
+---
+
+```{r external_sources, cache=FALSE, echo=FALSE}
+pacman::p_load(knitr, here)
+read_chunk(here("data/D01_SwiftKey/download_swiftkey_data.R"))
+```
+
+[Coursera Assignment Page](https://www.coursera.org/learn/data-science-project/supplement/Iimbd/task-0-understanding-the-problem)
+
+Resource Links:
+
+- [Dataset Link](https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip)
+- [HC Corpora Readme](http://www.corpora.heliohost.org/aboutcorpus.html)
+- [Natural language processing Wikipedia page](https://en.wikipedia.org/wiki/Natural_language_processing)
+- [Text mining infrastructure in R](http://www.jstatsoft.org/v25/i05/)
+- [CRAN Task View: Natural Language Processing](http://cran.r-project.org/web/views/NaturalLanguageProcessing.html)
+- [Coursera course on NLP (not in R)](https://www.coursera.org/course/nlp)
+- [Tidy Text Mining with R](http://tidytextmining.com/)
+
+## Tasks to Accomplish
+
+1. Download the data and load/manipulate it in R
+2. Learn about the basics of natural language processing and how it relates to
+    the data science process you have learned in the Data Science Specialization.
+
+### Download the data
+
+The following code will download and unzip the source file into the directory *data/D01_SwiftKey/*
+
+```{r download_swiftkey_data, eval = FALSE}
+```
+
+### Load/Manipulate the data in R
+
+Read in each English data file, print summary information and first 5 lines of data.
+
+```{r load_manipulate}
+pacman::p_load(tidyverse, here)
+en_files <- list.files(path = here("data/D01_SwiftKey/final/en_US"),
+                       full.names = T)
+
+for (i in en_files) {
+   print(i)
+   data <- read_lines(i, progress = F)
+   print(summary(data))
+   print(data[1:5])
+}
+
+```
+
+## Questions to Consider
+
+#### 1. What do the data look like?
+
+The data is stored in text files, with one line per entry. The data is available
+in English (EN), German (DE), Finnish (FI), and Russian (RU).  There is on folder
+per language and three files per folder.  Each folder contains a blogs, news, and
+twitter text file.
+
+#### 2. Where do the data come from?
+
+The data comes from publicly available news websites, blogs, and tweets.  A web
+crawler automaticly scrapes and sort the data per the [HC Corpora readme](http://www.corpora.heliohost.org/aboutcorpus.html).
+
+#### 3. Can you think of any other data sources that might help you in this project?
+
+Useful auxiliary data sources may include a listing of vulgar or profane words
+that shouldn't be used during analysis and a list of stopwords.  Stopwords are
+common words required for grammer that don't add much to the meaning of text - 
+e.g. and, the, a, was, etc.
+
+#### 4. What are the common steps in natural language processing?
+
+1. Import data
+2. Clean data - remove punctuation, stopwords, or other undesireable characters. 
+3. Tokenize data - slice into 1, 2, or n word groupings
+4. Analyze tokenized data 
+5. Model data
+
+#### 5. What are some common issues in the analysis of text data?
+
+Common issues may include dealing with misspelt words, use of non-alphabetic
+characters ot express words, and use of word modifiers to change meanings - e.g.
+not surprised vs. surprised.
+
+#### 6. What is the realtionship between NLP and the concepts you have learned in the Specialization?
+
+NLP uses the same basic step as other exploratory data analysis in this course.
+The data must be treated slightly different, but the basic steps of import, clean,
+explore, and model are the same.  In addition, many of the exploratory data analysis
+and modeling techniques can be applied to natural language processing.

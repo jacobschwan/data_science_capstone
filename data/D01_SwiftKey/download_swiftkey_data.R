@@ -1,3 +1,5 @@
+## ---- download_swiftkey_data ----
+
 pacman::p_load(here)
 
 dl_file <- here("data/D01_SwiftKey/Coursera-SwiftKey.zip")
