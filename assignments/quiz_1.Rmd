@@ -1,0 +1,52 @@
+---
+title: "Quiz 1: Getting Started"
+output: html_notebook
+---
+
+```{r load_packages}
+pacman::p_load(tidyverse, here)
+```
+
+
+### The en_US.blogs.txt  file is how many megabytes?
+```{r q1}
+file.size(here("/data/D01_SwiftKey/final/en_US/en_US.blogs.txt"))/1024^2
+```
+
+### The en_US.twitter.txt has how many lines of text?
+```{r q2}
+length(read_lines(here("/data/D01_SwiftKey/final/en_US/en_US.twitter.txt"), progress = F))
+```
+
+### What is the length of the longest line seen in any of the three en_US data sets?
+```{r q3}
+maxLine <- bind_rows(data_frame(source = "blogs",
+                                text = read_lines(here("/data/D01_SwiftKey/final/en_US/en_US.blogs.txt"), 
+                                                  progress = F)),
+                     data_frame(source = "news",
+                                text = read_lines(here("/data/D01_SwiftKey/final/en_US/en_US.news.txt"),
+                                                  progress = F)),
+                     data_frame(source = "twitter",
+                                text = read_lines(here("/data/D01_SwiftKey/final/en_US/en_US.twitter.txt"),
+                                                  progress = F))) %>%
+   mutate(chars = nchar(text))
+filter(maxLine, chars == max(chars)) %>% 
+   select(source,chars)
+```
+
+### In the en_US twitter data set, if you divide the number of lines where the word "love" (all lowercase) occurs by the number of lines the word "hate" (all lowercase) occurs, about what do you get?
+```{r q4}
+twitter <- maxLine %>% 
+   filter(source == "twitter")
+sum(grepl("love",twitter$text))/sum(grepl("hate",twitter$text))
+```
+
+### The one tweet in the en_US twitter data set that matches the word "biostats" says what?
+```{r q5}
+grep("biostats",twitter$text,value = T)
+```
+
+### How many tweets have the exact characters "A computer once beat me at chess, but it was no match for me at kickboxing". (I.e. the line matches those characters exactly.)
+```{r q6}
+sum(twitter$text == "A computer once beat me at chess, but it was no match for me at kickboxing")
+```

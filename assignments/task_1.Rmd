@@ -1,0 +1,78 @@
+---
+title: "Task 1: Getting and Cling the Data"
+output: html_notebook
+---
+
+```{r external_code, cache=FALSE, echo=FALSE}
+pacman::p_load(knitr, here)
+read_chunk(here("data/D02_bad_words/download_bad_words.R"))
+read_chunk(here("builds/B01_Sample_Dataset/build_sample_dataset.R"))
+```
+
+
+[Coursera Assignment Page](https://www.coursera.org/learn/data-science-project/supplement/IbTUL/task-1-getting-and-cleaning-the-data)
+
+## Tasks to Accomplish
+
+1. Tokenization - identifying appropriate tokens such as words, punctuation, and
+    numbers. Writing a function that takes a file as input and returns a tokenized
+    version of it.
+    
+2. Profanity filtering - removing profanity and other words you do not want to
+    predict.
+    
+*Hints:* Create and save samples of the data
+
+### Generate Random Subset of Data
+
+It is recommended that we generate a random subset of our data to reduce the computing requirements for our analyis.  We'll start by creating a sample data set which consists of 0.1% of the lines in each English data file.  This sample set will be loaded for all further analysis.
+
+```{r build_sample_dataset, eval = FALSE}
+```
+
+```{r load_sample_data}
+pacman::p_load(tidyverse, here)
+
+sample_data <- read_csv(here("builds/B01_Sample_Dataset/sample_dataset.csv"),
+                        col_types = "cic")
+
+head(sample_data)
+```
+
+### Tokenization
+
+The [tidytext](https://cran.r-project.org/web/packages/tidytext/index.html)
+package will be used to tokenize the data into individual words,
+remove punctuation, and change all words to lower case.  This is all accomplished
+with the `unnest_tokens()` command.
+
+```{r tokenization}
+pacman::p_load(tidytext)
+
+sample_tokens <- sample_data %>%
+   unnest_tokens(word, value)
+
+sample_tokens
+```
+
+### Profanity Filtering
+
+Profanity filtering will be accomplished with the same technique as removing
+stop words.  Profain terms come from the
+[List of Dirty, Naughty, Obscene, and Otherwise Bad Words](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/blob/master/README.md)
+provided by [Shutterstock](http://www.shuttertock.com) in a GitHub repository.
+The list is provided in simple text with one line per term/phrase. 
+
+Since the data is already tokenized before filtering, only one word profanities
+will be removed.
+
+```{r profanity_filter}
+bad_words <- tibble(word = read_lines(here("data/D02_bad_words/bad_words.txt")))
+
+sample_tokens_clean <- sample_tokens %>%
+   anti_join(bad_words)
+
+sample_tokens
+```
+
+We have successfully removed `r nrow(sample_tokens) - nrow(sample_tokens_clean)` profain terms from our data.
