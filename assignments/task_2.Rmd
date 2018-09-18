@@ -1,0 +1,214 @@
+---
+title: "Task 2: Exploratory Data Analysis"
+output: html_notebook
+---
+
+[Coursera Assignment Page](https://www.coursera.org/learn/data-science-project/supplement/BePVz/task-2-exploratory-data-analysis)
+
+## Tasks to Accomplish
+
+1. **Exploratory analysis** - perform a thorough exploratory analysis of the data, understanding the distribution of words and relationship between the words in the corpora.
+
+2. **Understand frequencies of words and word pairs** - build figures and tables to understand variation in the frequencies of words and word pairs in the data.
+
+### Questions to Consider
+
+1. Some words are more frequent than others - what are the distributions of word
+    frequencies?
+2. What are the frequencies of 2-grams and 3-grams in the dataset?
+3. How many unique words do you need in a frequency sorted dictionary to cover
+    50% of all word instances in the language? 90%?
+4. How do you evaluate how many of the words come from foreign languages?
+5. Can you think of a way to increase the coverage -- identifying words that may
+    not be in the corpora or using a smaller number of words in the dictionary 
+    to cover the same number of phrases?
+
+```{r load_libraries}
+pacman::p_load(tidyverse, tidytext, here)
+```
+
+## Distribution of Word Frequencies
+
+```{r load_data}
+sample_data <- read_csv(here("builds/B01_Sample_Dataset/sample_dataset.csv"),
+                        col_types = "cic")
+bad_words <- tibble(word = read_lines(here("data/D02_bad_words/bad_words.txt")))
+```
+
+```{r}
+onegrams_source <- sample_data %>%
+   unnest_tokens(word, value) %>%
+   anti_join(bad_words) %>%
+   count(source, word, sort = T) %>%
+   group_by(source) %>%
+   mutate(total_words = sum(n)) %>%
+   mutate(percent = n / total_words) %>%
+   mutate(cum_percent = cumsum(percent))
+
+onegrams_source
+```
+
+```{r}
+ggplot(onegrams_source, aes(percent, fill = source)) +
+   geom_histogram(alpha = 0.8, show.legend = F) +
+   facet_wrap(~source, ncol = 2, scales = "free_y") +
+   labs(title = "Term Frequency Distribution in Data Sets")
+```
+
+```{r}
+ggplot(onegrams_source, aes(n, fill = source)) +
+   geom_histogram(alpha = 0.8, show.legend = F) +
+   facet_wrap(~source, ncol = 2, scales = "free_y") +
+   labs(title = "Term Frequency Distribution in Data Sets")
+```
+
+Most words only appear a handful of times in each data set.
+
+```{r}
+onegrams_source %>%
+   filter(cum_percent <= 0.5) %>%
+   summarise(words = n(), total_words = unique(total_words)) %>%
+   mutate(percent = words / total_words)
+```
+
+Less than 1% of the unique words are needed to make up 50% of each source. 
+
+```{r}
+onegrams_source %>%
+   filter(cum_percent <= 0.9) %>%
+   summarise(words = n(),
+             total_words = unique(total_words)) %>%
+   mutate(percent = words / total_words)
+```
+
+Less than 15% of the unique words are needed to make up 90% of each source.
+
+```{r}
+onegrams_source %>%
+   filter(cum_percent <= 0.5) %>%
+   ggplot(aes(n, fill = source)) +
+   geom_histogram(alpha = 0.8, show.legend = F) +
+   facet_wrap(~source, ncol = 2, scales = "free_y") +
+   labs(title = "Term Frequency Distribution of Top 50% of words")
+```
+
+```{r}
+onegrams_source %>%
+   filter(cum_percent <= 0.9) %>%
+   ggplot(aes(n, fill = source)) +
+   geom_histogram(alpha = 0.8, show.legend = F) +
+   facet_wrap(~source, ncol = 2, scales = "free_y") +
+   labs(title = "Term Frequency Distribution of Top 90% of words")
+```
+
+
+```{r}
+onegrams_corpa <- sample_data %>%
+   unnest_tokens(word, value) %>%
+   anti_join(bad_words) %>%
+   count(word, sort = T) %>%
+   mutate(total_words = sum(n)) %>%
+   mutate(percent = n / total_words) %>%
+   mutate(cum_percent = cumsum(percent))
+
+onegrams_corpa
+```
+
+```{r}
+ggplot(onegrams_corpa, aes(percent)) +
+   geom_histogram(alpha = 0.8, show.legend = F) +
+   labs(title = "Term Frequency Distribution in Corpa")
+```
+
+```{r}
+ggplot(onegrams_corpa, aes(n)) +
+   geom_histogram(alpha = 0.8, show.legend = F) +
+   labs(title = "Term Frequency Distribution in Corpa")
+```
+
+```{r}
+onegrams_corpa %>%
+   filter(cum_percent <= 0.5) %>%
+   summarise(words = n(), total_words = unique(total_words)) %>%
+   mutate(percent = words / total_words)
+```
+
+For the entire corpa we need less than 0.15% of the unqiue words to make up 50% of the words used.
+
+```{r}
+onegrams_corpa %>%
+   filter(cum_percent <= 0.9) %>%
+   summarise(words = n(),
+             total_words = unique(total_words)) %>%
+   mutate(percent = words / total_words)
+```
+
+A little over 5% of words are needed to make up 90% of our corpa
+
+```{r}
+onegrams_corpa %>%
+   mutate(no_words = row_number()) %>%
+   ggplot(aes(no_words, cum_percent)) +
+   geom_line()
+```
+
+Benefit to adding more words drops off around 75%
+
+## Bigrams
+
+```{r}
+bigrams <- sample_data %>% 
+   unnest_tokens(bigram, value, token = "ngrams", n = 2) %>%
+   anti_join(bad_words, by = c("bigram" = "word")) %>%
+   separate(bigram, c("word1", "word2"), sep = " ", remove = F) %>%
+   filter(!word1 %in% bad_words$word & !word2 %in% bad_words$word) %>%
+   count(bigram, sort = T) %>%
+   mutate(total_bigrams = sum(n)) %>%
+   mutate(percent = n/total_bigrams) %>%
+   mutate(cum_percent = cumsum(percent))
+
+bigrams
+```
+
+```{r}
+ggplot(bigrams, aes(n)) +
+   geom_histogram(alpha = 0.8, show.legend = F) +
+   labs(title = "Bigram Frequency Distribution in Corpa")
+```
+
+```{r}
+bigrams %>%
+   mutate(no_words = row_number()) %>%
+   ggplot(aes(no_words, cum_percent)) +
+   geom_line()
+```
+
+## Trigrams
+
+```{r}
+trigrams <- sample_data %>% 
+   unnest_tokens(trigram, value, token = "ngrams", n = 3) %>%
+   anti_join(bad_words, by = c("trigram" = "word")) %>%
+   separate(trigram, c("word1", "word2", "word3"), sep = " ", remove = F) %>%
+   filter(!word1 %in% bad_words$word & !word2 %in% bad_words$word & !word3 %in% bad_words$word) %>%
+   count(trigram, sort = T) %>%
+   mutate(total_bigrams = sum(n)) %>%
+   mutate(percent = n/total_bigrams) %>%
+   mutate(cum_percent = cumsum(percent))
+
+trigrams
+```
+
+```{r}
+ggplot(trigrams, aes(n)) +
+   geom_histogram(alpha = 0.8, show.legend = F) +
+   labs(title = "Trigram Frequency Distribution in Corpa")
+```
+
+```{r}
+trigrams %>%
+   mutate(no_words = row_number()) %>%
+   ggplot(aes(no_words, cum_percent)) +
+   geom_line()
+```
+
