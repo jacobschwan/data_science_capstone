@@ -1,0 +1,72 @@
+---
+title: "Task 3: Modeling"
+output: html_notebook
+---
+
+```{r}
+pacman::p_load(tidyverse, tidytext, here)
+```
+
+## Bigram Model
+
+```{r load_data}
+sample_data <- read_csv(here("builds/B01_Sample_Dataset/sample_dataset.csv"),
+                        col_types = "cic")
+bad_words <- tibble(word = read_lines(here("data/D02_bad_words/bad_words.txt")))
+```
+
+```{r}
+unigrams <- sample_data %>%
+   unnest_tokens(word, value) %>%
+   anti_join(bad_words) %>%
+   count(word, sort = T) %>%
+   rename(n_uni = n)
+
+unigrams
+```
+
+```{r}
+bigrams <- sample_data %>% 
+   unnest_tokens(bigram, value, token = "ngrams", n = 2) %>%
+   anti_join(bad_words, by = c("bigram" = "word")) %>%
+   separate(bigram, c("word1", "word2"), sep = " ", remove = F) %>%
+   filter(!(word1 %in% bad_words$word) & !(word2 %in% bad_words$word)) %>%
+   count(bigram, word1, word2, sort = T) %>%
+   rename(n_bi = n)
+
+bigrams
+```
+
+```{r}
+bigram_model <- bigrams %>%
+   left_join(unigrams, by = c("word1" = "word")) %>%
+   mutate(prob = n_bi / n_uni) %>%
+   arrange(word1, desc(prob)) %>%
+   select(word1, word2, prob)
+
+bigram_model
+```
+
+```{r}
+bigram_model %>%
+   filter(word2 == "pizza")
+```
+
+```{r}
+bigram_model %>%
+   filter(word1 == "where")
+```
+
+```{r}
+p_is_where <- bigram_model %>%
+   filter(word1 == "where", word2 == "is") %>%
+   pull(prob)
+p_my_is <- bigram_model %>%
+   filter(word1 == "is", word2 == "my") %>%
+   pull(prob)
+p_pizza_my <- bigram_model %>%
+   filter(word1 == "my", word2 == "pizza") %>%
+   pull(prob)
+p_is_where * p_my_is * p_pizza_my
+```
+
