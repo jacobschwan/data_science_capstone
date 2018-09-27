@@ -1,0 +1,84 @@
+---
+title: 'Task 4: Model Variations'
+output: html_document
+---
+
+```{r}
+pacman::p_load(tidyverse, tidytext, here)
+```
+
+```{r load_data}
+sample_data <- read_csv(here("builds/B01_Sample_Dataset/sample_dataset.csv"),
+                        col_types = "cic")
+bad_words <- tibble(word = read_lines(here("data/D02_bad_words/bad_words.txt")))
+```
+
+```{r}
+unigrams <- sample_data %>%
+   unnest_tokens(word, value) %>%
+   anti_join(bad_words) %>%
+   filter(!grepl("[[:digit:]]|(^| )[[:punct::]]( |$)|_", word)) %>%
+   count(word, sort = T) %>%
+   rename(n_uni = n) %>%
+   mutate(prob_uni = n_uni / sum(n_uni))
+
+unigrams
+```
+
+```{r}
+singles <- unigrams %>%
+   filter(n_uni == 1) %>%
+   pull(word)
+
+head(singles)
+```
+
+```{r}
+unigrams_ns <- unigrams %>%
+   filter(n_uni > 1)
+```
+
+
+```{r}
+bigrams <- sample_data %>% 
+   unnest_tokens(bigram, value, token = "ngrams", n = 2) %>%
+   filter(!is.na(bigram)) %>%
+   anti_join(bad_words, by = c("bigram" = "word")) %>%
+   separate(bigram, c("n_1", "word"), sep = " ", remove = F) %>%
+   filter(!(n_1 %in% bad_words$word) & !(word %in% bad_words$word)) %>%
+   filter(!grepl("[[:digit:]]|(^| )[[:punct::]]( |$)|_", bigram)) %>%
+   count(bigram, n_1, word, sort = T) %>%
+   rename(n_bi = n) %>%
+   group_by(n_1) %>%
+   mutate(prob_bi = n_bi / sum(n_bi))
+
+bigrams
+```
+
+```{r}
+trigrams <- sample_data %>% 
+   unnest_tokens(trigram, value, token = "ngrams", n = 3) %>%
+   filter(!is.na(trigram)) %>%
+   anti_join(bad_words, by = c("trigram" = "word")) %>%
+   separate(trigram, c("n_2", "n_1", "word"), sep = " ", remove = F) %>%
+   filter(!(n_1 %in% bad_words$word) & !(n_2 %in% bad_words$word) & !(word %in% bad_words$word)) %>%
+   filter(!grepl("[[:digit:]]|(^| )[[:punct::]]( |$)|_", trigram)) %>%
+   mutate(n_1 = case_when(n_1 %in% singles ~ "<UNK>",
+                            TRUE ~ n_1)) %>%
+   count(trigram, n_2, n_1, word, sort = T) %>%
+   rename(n_tri = n) %>%
+   group_by(n_1, n_2) %>%
+   mutate(prob_tri = n_tri / sum(n_tri))
+
+trigrams
+```
+
+```{r}
+prob_table <- trigrams %>%
+   full_join(bigrams) %>%
+   full_join(unigrams_ns) %>%
+   select(-trigram, -bigram)
+
+prob_table
+```
+
