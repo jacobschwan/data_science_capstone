@@ -1,0 +1,210 @@
+---
+title: 'Task 4.1: Model Comparisons'
+output: html_document
+---
+
+```{r}
+pacman::p_load(tidyverse, tidytext, modelr, tokenizers, here)
+```
+
+# Model building funtion
+
+```{r}
+bad_words <- paste0(read_lines(here("data/D02_bad_words/bad_words.txt")), collapse = "|")
+```
+
+```{r}
+ngram_score <- function(grams, data) {
+   data %>%
+   unnest_tokens(ngram, value, token = "ngrams", n = grams) %>%
+   filter(!is.na(ngram),
+          !str_detect(ngram, bad_words),
+          !grepl("[[:digit:]]|(^| )[[:punct::]]( |$)|_", ngram)) %>%
+   mutate(word = word(ngram, -1)) %>%
+   mutate(ngram = str_trim(str_replace(ngram, paste0(word, "$"), ""))) %>%
+   count(ngram, word, sort = T) %>%
+   group_by(ngram) %>%
+   mutate(score = n / sum(n),
+          n_grams = grams) %>%
+   arrange(desc(score)) %>%
+   ungroup() %>%
+   return()
+}
+```
+
+```{r}
+easy_model <- function(grams, data) {
+   map_df(c(grams:1), ngram_score, data = data)
+}
+```
+
+
+```{r}
+easy_predict_3 <- function(input, model) {
+   max_grams <- max(model$n_grams)
+   
+   #tokenize input
+   input_words <- unlist(tokenizers::tokenize_words(input))
+   input_grams <- min(length(input_words), max_grams)
+   
+   for (i in input_grams:0) {
+      if (i == 0) {
+         return(head(model[model$ngram == "", c("word","score", "n_grams")], 3))
+      }
+      
+      input_string <- paste0(tail(input_words, i), collapse = " ")
+      results <- model[model$ngram == input_string, c("word", "score", "n_grams")]
+      if (nrow(results) > 0) {
+         return(head(results, 3))
+      }   
+   }
+}
+
+easy_predict <- function(input, model) {
+   max_grams <- max(model$n_grams)
+   
+   #tokenize input
+   input_words <- unlist(tokenizers::tokenize_words(input))
+   input_grams <- min(length(input_words), max_grams)
+   
+   for (i in input_grams:0) {
+      if (i == 0) {
+         results <- model %>%
+            filter(ngram == "") %>%
+            pull(word)
+         return(results[1])
+      }
+      
+      input_string <- paste0(tail(input_words, i), collapse = " ")
+      results <- model %>%
+         filter(ngram == input_string) %>%
+         pull(word)
+      if (length(results) > 0) {
+         return(results[1])
+      }   
+   }
+}
+```
+
+# Generate model sets
+
+```{r}
+sample_data <- read_csv(here("builds/B01_Sample_Dataset/sample_dataset.csv"),
+                        col_types = "cic")
+```
+
+```{r}
+models <- map(c(2:3), easy_model, data = sample_data) %>%
+   setNames(paste(c(2:3),"grams", sep = "_"))
+```
+
+```{r}
+pmap(list(model = models, input = "hello how are"), easy_predict)
+```
+
+```{r}
+testing_set <- read_csv(here("builds/B02_Testing_Datasets/testing_set_0.csv"),
+                        col_types = "icc")
+```
+
+```{r}
+test_3_gram <- testing_set %>%
+   unnest_tokens(ngram, sentence, token = "ngrams", n = 3) %>%
+   filter(!is.na(ngram)) %>%
+   mutate(word = word(ngram, -1)) %>%
+   mutate(ngram = str_trim(str_replace(ngram, paste0(word, "$"), "")))
+   
+```
+
+```{r}
+results <- test_3_gram %>%
+   mutate(guess = map_chr(ngram, easy_predict, model = models[[2]])) %>%
+   mutate(correct = word == guess)
+```
+
+```{r}
+results %>%
+   pull(correct) %>%
+   mean()
+```
+
+```{r}
+test_model <- function(model, data) {
+   data %>%
+      mutate(guess = map_chr(ngram, easy_predict, model = model)) %>%
+      mutate(correct = word == guess) %>%
+      pull(correct) %>%
+      mean()
+}
+```
+
+```{r}
+test_model(models[[2]], test_3_gram)
+```
+
+```{r}
+map_df(models, test_model, data = test_3_gram) %>%
+   gather(key = "model", value = "accuracy")
+```
+
+# Test Accuarcy of Various N-Grams
+
+```{r}
+test_10_gram <- testing_set %>%
+   unnest_tokens(ngram, sentence, token = "ngrams", n = 10) %>%
+   filter(!is.na(ngram)) %>%
+   mutate(word = word(ngram, -1)) %>%
+   mutate(ngram = str_trim(str_replace(ngram, paste0(word, "$"), "")))
+```
+
+
+```{r}
+grams <- seq(2:10)
+models <- map(grams, easy_model, data = sample_data) %>%
+   setNames(grams)
+results <- map_df(models, test_model, data = test_10_gram) %>%
+   gather(key = "model", value = "accuracy")
+```
+
+```{r}
+results %>%
+   mutate(model = as.integer(model)) %>%
+   ggplot(aes(x = model, y = accuracy)) +
+   geom_line()
+```
+
+Model accuarcy flattens out after 5 grams
+
+```{r}
+map_df(models, object.size) %>%
+   gather(key = "model", value = "size") %>%
+   mutate(model = as.integer(model)) %>%
+   ggplot(aes(x = model, y = size)) +
+   geom_path()
+```
+
+Model size growth is constant after 3 grams 
+
+
+# Larger Sample Data
+
+Are the same trends true with a larger sample set?
+
+```{r}
+sample_10 <- read_csv(here("builds/B01_Sample_Dataset/sample_dataset_10.csv"),
+                        col_types = "cic")
+```
+
+```{r}
+grams <- c(1:9)
+start_modeling <- Sys.time()
+models_10 <- map(grams, easy_model, data = sample_10) %>%
+   setNames(grams)
+stop_modeling <- Sys.time()
+results_10 <- map_df(models_10, test_model, data = test_10_gram) %>%
+   gather(key = "model", value = "accuracy")
+stop_testing <- Sys.time()
+stop_modeling - start_modeling
+stop_testing - stop_modeling
+stop_testing - start_modeling
+```
