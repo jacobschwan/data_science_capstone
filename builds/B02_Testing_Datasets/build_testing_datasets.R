@@ -33,7 +33,7 @@ corpus <- map_df(en_files, read_data) %>%
    sample_n(nrow(.))
 
 write_test_set <- function(start, data = corpus) {
-   file_name <- here(glue("builds/B02_Testing_Datasets/training_set_{start%/%500}.csv"))
+   file_name <- here(glue("builds/B02_Testing_Datasets/testing_set_{start%/%500}.csv"))
    write_csv(data[start:(start+499),], file_name)
 }
 
