@@ -37,3 +37,17 @@ sample_data <- map_df(en_files, read_sample, sample_size = 0.001)
 
 write_csv(sample_data, here("builds/B01_Sample_Dataset/sample_dataset.csv"))
 
+# Collect 10%, 20%, & 50% sample data
+sample_10 <- map_df(en_files, read_sample, sample_size = 0.1) %>%
+   write_csv(here("builds/B01_Sample_Dataset/sample_dataset_10.csv"))
+
+sample_20 <- map_df(en_files, read_sample, sample_size = 0.2) %>%
+   write_csv(here("builds/B01_Sample_Dataset/sample_dataset_20.csv"))
+
+sample_50 <- map_df(en_files, read_sample, sample_size = 0.5) %>%
+   write_csv(here("builds/B01_Sample_Dataset/sample_dataset_50.csv"))
+
+bind_rows(sample_data, sample_10, sample_20, sample_50) %>%
+   select(source, source_line) %>%
+   distinct() %>%
+   write_csv(here("builds/B01_Sample_Dataset/all_sample_entries.csv"))
