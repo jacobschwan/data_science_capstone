@@ -20,24 +20,11 @@ unigrams <- sample_data %>%
    filter(!grepl("[[:digit:]]|(^| )[[:punct::]]( |$)|_", word)) %>%
    count(word, sort = T) %>%
    rename(n_uni = n) %>%
+   filter(n_uni > 1) %>%
    mutate(prob_uni = n_uni / sum(n_uni))
 
 unigrams
 ```
-
-```{r}
-singles <- unigrams %>%
-   filter(n_uni == 1) %>%
-   pull(word)
-
-head(singles)
-```
-
-```{r}
-unigrams_ns <- unigrams %>%
-   filter(n_uni > 1)
-```
-
 
 ```{r}
 bigrams <- sample_data %>% 
@@ -63,8 +50,6 @@ trigrams <- sample_data %>%
    separate(trigram, c("n_2", "n_1", "word"), sep = " ", remove = F) %>%
    filter(!(n_1 %in% bad_words$word) & !(n_2 %in% bad_words$word) & !(word %in% bad_words$word)) %>%
    filter(!grepl("[[:digit:]]|(^| )[[:punct::]]( |$)|_", trigram)) %>%
-   mutate(n_1 = case_when(n_1 %in% singles ~ "<UNK>",
-                            TRUE ~ n_1)) %>%
    count(trigram, n_2, n_1, word, sort = T) %>%
    rename(n_tri = n) %>%
    group_by(n_1, n_2) %>%
@@ -76,9 +61,179 @@ trigrams
 ```{r}
 prob_table <- trigrams %>%
    full_join(bigrams) %>%
-   full_join(unigrams_ns) %>%
-   select(-trigram, -bigram)
+   full_join(unigrams) %>%
+   select(-trigram, -bigram) %>%
+   ungroup()
 
 prob_table
 ```
 
+```{r}
+predict_word <- function(input, model = prob_table) {
+   #tokenize input
+   input_words <- unlist(tokenizers::tokenize_words(input))
+   
+   #limit to max n-grams in training
+   input_words <- tail(input_words, 2)
+   
+   #determine n-gram length
+   n_grams <- length(input_words)
+   
+   #bigram
+   trigrams <- model %>%
+      filter(n_2 == input_words[1],
+             n_1 == input_words[2]) %>%
+      select(word, prob_tri)
+   
+   if(nrow(trigrams) > 0) {
+      result <- trigrams %>%
+         arrange(desc(prob_tri))
+      
+      return(result$word[1:3])
+   }
+   
+   bigrams <- model %>%
+      filter(n_1 == input_words[2]) %>%
+      select(word, prob_bi)
+   
+   if(nrow(bigrams) > 0) {
+      result <- bigrams %>%
+         arrange(desc(prob_bi))
+      
+      return(result$word[1:3])
+   }
+   
+   result <- model %>%
+      arrange(desc(prob_uni))
+   
+   return(result$word[1:3])
+}
+```
+
+```{r}
+predict_word("a lot", prob_table)
+```
+
+```{r}
+predict_word("how are you")
+```
+
+# Quiz 3
+
+```{r}
+predict_word("When you breathe, I want to be the air for you. I'll be there for you, I'd live and I'd")
+```
+
+```{r}
+
+grams <- 4
+
+sample_data %>% 
+   unnest_tokens(ngram, value, token = "ngrams", n = grams) %>%
+   filter(!is.na(ngram),
+          !str_detect(ngram, bad_words$word),
+          !grepl("[[:digit:]]|(^| )[[:punct::]]( |$)|_", ngram)) %>%
+   separate(ngram,  c(paste("n", grams:1, sep = "_"), "word"), sep = " ", remove = F) %>%
+   group_by_at(vars(contains("n_"), word)) %>%
+   summarize(paste0("c_", grams) = n()) %>%
+   group_by_at(vars(contains("n_"))) %>%
+   mutate("prob_4" = !! sym(paste0("c_", grams)) / sum(!! sym(paste0("c_", grams)))) %>%
+   ungroup()
+```
+
+# Easy Build Model
+
+```{r}
+sample_data %>%
+   unnest_tokens(ngram, value, token = "ngrams", n = 4) %>%
+   mutate(word = word(ngram, -1)) %>%
+   filter(!is.na(ngram),
+          !str_detect(ngram, bad_words$word),
+          !grepl("[[:digit:]]|(^| )[[:punct::]]( |$)|_", ngram)) %>%
+   mutate(ngram = str_replace(ngram, paste0(" ", word), "")) %>%
+   count(ngram, word, sort = T) %>%
+   group_by(ngram) %>%
+   mutate(score = n / sum(n)) %>%
+   arrange(desc(score)) %>%
+   ungroup()
+```
+
+Functionize it!
+
+```{r}
+ngram_score <- function(grams, data) {
+   data %>%
+   unnest_tokens(ngram, value, token = "ngrams", n = grams) %>%
+   filter(!is.na(ngram),
+          !str_detect(ngram, bad_words$word),
+          !grepl("[[:digit:]]|(^| )[[:punct::]]( |$)|_", ngram)) %>%
+   mutate(word = word(ngram, -1)) %>%
+   mutate(ngram = str_trim(str_replace(ngram, paste0(word, "$"), ""))) %>%
+   count(ngram, word, sort = T) %>%
+   group_by(ngram) %>%
+   mutate(score = n / sum(n),
+          n_grams = grams) %>%
+   arrange(desc(score)) %>%
+   ungroup() %>%
+   return()
+}
+
+ngram_score(5, sample_data)
+```
+
+```{r}
+ngram_score(1, sample_data)
+```
+
+
+Build 6-gram stupid backoff
+
+```{r}
+easy_6_gram <- map_df(6:1, ngram_score, data = sample_data)
+
+object.size(easy_6_gram)
+```
+
+```{r}
+head(easy_6_gram)
+```
+
+```{r}
+easy_predict <- function(input, model = easy_6_gram) {
+   #tokenize input
+   input_words <- unlist(tokenizers::tokenize_words(input))
+   input_grams <- min(length(input_words), 6)
+   
+   for (i in input_grams:0) {
+      if (i == 0) {
+         return(head(model[model$ngram == "", c("word","score", "n_grams")], 3))
+      }
+      
+      input_string <- paste0(tail(input_words, i), collapse = " ")
+      results <- model[model$ngram == input_string, c("word", "score", "n_grams")]
+      if (nrow(results) > 0) {
+         return(head(results, 3))
+      }   
+   }
+}
+```
+
+```{r}
+easy_predict("hello how are you")
+```
+
+#Quiz 3
+
+```{r}
+easy_predict("When you breathe, I want to be the air for you. I'll be there for you, I'd live and I'd")
+```
+
+```{r}
+easy_predict("Guy at my table's wife got up to go to the bathroom and I asked about dessert and he started telling me about his")
+```
+
+```{r}
+easy_predict("I'd give anything to see arctic monkeys this")
+```
+
+Probably need a bigger traing set...
