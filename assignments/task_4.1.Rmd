@@ -4,7 +4,7 @@ output: html_document
 ---
 
 ```{r}
-pacman::p_load(tidyverse, tidytext, modelr, tokenizers, here)
+pacman::p_load(tidyverse, tidytext, modelr, tokenizers, here, stringr)
 ```
 
 # Model building funtion
@@ -190,7 +190,7 @@ Model size growth is constant after 3 grams
 
 Are the same trends true with a larger sample set?
 
-```{r}
+```{r, eval=FALSE}
 sample_10 <- read_csv(here("builds/B01_Sample_Dataset/sample_dataset_10.csv"),
                         col_types = "cic")
 ```
@@ -228,16 +228,20 @@ test_model_n <- function(max_grams, model, data) {
 }
 ```
 
+```{r}
+score_files <- list.files(path = here("/builds/B03_Models/"),
+                          pattern = "^sample10",
+                          full.names = T)
+model10_7 <- map_df(score_files, read_csv, col_types = "ccddd")
+```
+
+
 
 ```{r}
-grams <- c(3:5)
-start_modeling <- Sys.time()
-models_10 <- easy_model(max(grams), data = sample_10)
-stop_modeling <- Sys.time()
-results_10 <- map_df(grams, test_model_n, model = models_10, data = test_10_gram) %>%
+grams <- c(3:7)
+start_testing <- Sys.time()
+results_10 <- map_df(grams, test_model_n, model = model10_7, data = test_10_gram) %>%
    gather(key = "model", value = "accuracy")
 stop_testing <- Sys.time()
-stop_modeling - start_modeling
-stop_testing - stop_modeling
-stop_testing - start_modeling
+stop_testing - start_testing
 ```
