@@ -1,0 +1,143 @@
+---
+title: 'Task 4.2: Stupid Backoff'
+output: html_document
+---
+
+```{r}
+pacman::p_load(tidyverse, tidytext, modelr, tokenizers, here)
+```
+
+```{r}
+bad_words <- paste0(read_lines(here("data/D02_bad_words/bad_words.txt")), collapse = "|")
+```
+
+```{r}
+ngram_df <- function(grams, data) {
+   data %>%
+   unnest_tokens(ngram, value, token = "ngrams", n = grams) %>%
+   filter(!is.na(ngram),
+          !str_detect(ngram, bad_words),
+          !grepl("[[:digit:]]|(^| )[[:punct::]]( |$)|_", ngram)) %>%
+   mutate(word = word(ngram, -1)) %>%
+   mutate(ngram = str_trim(str_replace(ngram, paste0(word, "$"), ""))) %>%
+   count(ngram, word, sort = T) %>%
+   return()
+}
+```
+
+```{r}
+sample_data <- read_csv(here("builds/B01_Sample_Dataset/sample_dataset.csv"),
+                        col_types = "cic")
+```
+
+```{r}
+unigrams <- ngram_df(1, sample_data) %>%
+   filter(n >=5 ) %>%
+   mutate(score = n / sum(n))
+
+head(unigrams)
+```
+
+```{r}
+dictionary <- unigrams %>%
+   pull(word)
+```
+
+```{r}
+bigrams <- ngram_df(2, sample_data) %>%
+   group_by(ngram) %>%
+   mutate(score = n / sum(n)) %>%
+   ungroup()
+
+bigrams
+```
+
+```{r}
+bigrams %>%
+   filter(ngram == "of") %>%
+   right_join(unigrams, by = c("word")) %>%
+   mutate(score = case_when(is.na(score.x) ~ 0.4*score.y,
+                            TRUE ~ score.x)) %>%
+   select(ngram = ngram.x, word, score) %>%
+   fill(ngram) %>%
+   arrange(desc(score)) %>%
+   head(3)
+```
+
+```{r}
+word_scores <- function(input_gram, data) {
+   data %>%
+      filter(ngram == input_gram) %>%
+      right_join(unigrams, by = c("word")) %>%
+      mutate(score = case_when(is.na(score.x) ~ 0.4*score.y,
+                            TRUE ~ score.x)) %>%
+      select(ngram = ngram.x, word, score) %>%
+      fill(ngram) %>%
+      arrange(desc(score)) %>%
+      head(3)
+}
+```
+
+```{r}
+bigram_scores <- map_df(unique(bigrams$ngram), word_scores, data = bigrams)
+
+bigram_scores
+```
+
+```{r}
+bigram_leftout <- unigrams %>%
+   filter(!(word %in% bigram_scores$ngram))
+
+bigram_leftout
+```
+
+
+```{r}
+trigrams <- ngram_df(3, sample_data) %>%
+   group_by(ngram) %>%
+   mutate(score = n / sum(n)) %>%
+   ungroup()
+
+trigrams
+```
+
+```{r}
+trigrams %>%
+   separate(ngram, c("n_2", "n_1"), sep = " ") %>%
+   filter(n_2 == "a", n_1 == "lot") %>%
+   right_join(bigram_scores %>% filter(ngram == "lot"), by = c("n_1" = "ngram", "word")) %>%
+   mutate(score = case_when(is.na(score.x) ~ 0.4*score.y,
+                            TRUE ~ score.x)) %>%
+   select(n_2, n_1, word, score) %>%
+   fill(n_2) %>%
+   arrange(desc(score)) %>%
+   head(3)
+```
+
+```{r}
+build_trigram <- function(input, data) {
+   input_words <- unlist(tokenize_words(input))
+   
+   data %>%
+      separate(ngram, c("n_2", "n_1"), sep = " ") %>%
+      filter(n_2 == input_words[1], n_1 == input_words[2]) %>%
+      right_join(bigram_scores %>% filter(ngram == input_words[2]), by = c("n_1" = "ngram", "word")) %>%
+      mutate(score = case_when(is.na(score.x) ~ 0.4*score.y,
+                            TRUE ~ score.x)) %>%
+      select(n_2, n_1, word, score) %>%
+      fill(n_2) %>%
+      arrange(desc(score)) %>%
+      head(3)
+}
+```
+
+```{r}
+trigram_scores <- map_df(unique(trigrams$ngram), build_trigram, data = trigrams)
+```
+
+```{r}
+trigram_scores
+```
+
+
+

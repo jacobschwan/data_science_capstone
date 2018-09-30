@@ -196,12 +196,45 @@ sample_10 <- read_csv(here("builds/B01_Sample_Dataset/sample_dataset_10.csv"),
 ```
 
 ```{r}
-grams <- c(1:9)
+easy_predict_n <- function(input, model, max_grams) {
+   #tokenize input
+   input_words <- unlist(tokenizers::tokenize_words(input))
+   input_grams <- min(length(input_words), max_grams)
+   
+   for (i in input_grams:0) {
+      if (i == 0) {
+         results <- model %>%
+            filter(ngram == "") %>%
+            pull(word)
+         return(results[1])
+      }
+      
+      input_string <- paste0(tail(input_words, i), collapse = " ")
+      results <- model %>%
+         filter(ngram == input_string) %>%
+         pull(word)
+      if (length(results) > 0) {
+         return(results[1])
+      }   
+   }
+}
+
+test_model_n <- function(max_grams, model, data) {
+   data %>%
+      mutate(guess = map_chr(ngram, easy_predict_n, model = model, max_grams = max_grams)) %>%
+      mutate(correct = word == guess) %>%
+      pull(correct) %>%
+      mean()
+}
+```
+
+
+```{r}
+grams <- c(3:5)
 start_modeling <- Sys.time()
-models_10 <- map(grams, easy_model, data = sample_10) %>%
-   setNames(grams)
+models_10 <- easy_model(max(grams), data = sample_10)
 stop_modeling <- Sys.time()
-results_10 <- map_df(models_10, test_model, data = test_10_gram) %>%
+results_10 <- map_df(grams, test_model_n, model = models_10, data = test_10_gram) %>%
    gather(key = "model", value = "accuracy")
 stop_testing <- Sys.time()
 stop_modeling - start_modeling
