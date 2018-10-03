@@ -1,0 +1,241 @@
+---
+title: "Task 4.3"
+output: html_document
+---
+
+```{r}
+pacman::p_load(tidyverse, tidytext, modelr, tokenizers, here)
+```
+
+```{r}
+bad_words <- paste0(read_lines(here("data/D02_bad_words/bad_words.txt")), collapse = "|")
+```
+
+```{r}
+ngram_df <- function(grams, data) {
+   data %>%
+   unnest_tokens(ngram, value, token = "ngrams", n = grams) %>%
+   filter(!is.na(ngram),
+          !str_detect(ngram, bad_words),
+          !grepl("[[:digit:]]|(^| )[[:punct::]]( |$)|_", ngram)) %>%
+   mutate(word = word(ngram, -1)) %>%
+   mutate(ngram = str_trim(str_replace(ngram, paste0(word, "$"), ""))) %>%
+   count(ngram, word, sort = T) %>%
+   return()
+}
+```
+
+```{r}
+sample_data <- read_csv(here("builds/B01_Sample_Dataset/sample_dataset.csv"),
+                        col_types = "cic")
+```
+
+```{r}
+unigrams <- ngram_df(1, sample_data) %>%
+   mutate(freq_1 = n / sum(n)) %>%
+   select(-ngram)
+bigrams <- ngram_df(2, sample_data) %>%
+   group_by(ngram) %>%
+   mutate(freq_2 = n / sum(n)) %>%
+   ungroup()
+trigrams <- ngram_df(3, sample_data) %>%
+   group_by(ngram) %>%
+   mutate(freq_3 = n / sum(n)) %>%
+   ungroup()
+```
+
+```{r}
+dictionary <- unigrams %>%
+   filter(n > 5) %>%
+   pull(word)
+```
+
+
+
+Let's find the stupid back off score for "a lot"
+
+```{r}
+tri_a_lot <- trigrams %>%
+   filter(ngram == "a lot")
+bi_a_lot <- bigrams %>%
+   filter(ngram == "lot")
+```
+
+```{r}
+tri_a_lot %>%
+   full_join(bi_a_lot, by = c("word")) %>%
+   full_join(unigrams, by = c("word")) %>%
+   select(word, freq_3, freq_2, freq_1) %>%
+   mutate(score = case_when(!is.na(freq_3) ~ freq_3,
+                            !is.na(freq_2) ~ 0.4*freq_2,
+                            TRUE ~ 0.4*0.4*freq_1)) %>%
+   arrange(desc(score))
+```
+
+```{r}
+sb_predict <- function(input) {
+   input_words <- unlist(tokenize_words(input))
+   input_bi <- paste0(tail(input_words, 2), collapse = " ")
+   input_uni <- paste0(tail(input_words, 1), collapse = " ")
+   
+   tris <- trigrams %>%
+      filter(ngram == input_bi) %>%
+      select(word, freq_3)
+   
+   bis <- bigrams %>%
+      filter(ngram == input_uni) %>%
+      select(word, freq_2)
+   
+   scores <- unigrams %>%
+      select(word, freq_1) %>%
+      full_join(bis, by = c("word")) %>%
+      full_join(tris, by = c("word")) %>%
+      mutate(score = case_when(!is.na(freq_3) ~ freq_3,
+                            !is.na(freq_2) ~ 0.4*freq_2,
+                            TRUE ~ 0.4*0.4*freq_1)) %>%
+      arrange(desc(score))
+   
+   return(scores)
+   
+}
+```
+
+```{r}
+sb_predict("a lot")
+```
+
+```{r}
+sb_predict("and i'd")
+```
+
+```{r}
+sb_predict("hello how")
+```
+
+```{r}
+model_1 <- list(trigrams = trigrams,
+                bigrams = bigrams,
+                unigrams = unigrams)
+object.size(model_1)
+```
+
+```{r}
+model_2 <- trigrams %>%
+   separate(ngram, c("n_2", "n_1"), sep = " ") %>%
+   select(n_2, n_1, word, freq_3) %>%
+   full_join(bigrams %>%
+                rename(n_1 = ngram) %>%
+                select(n_1, word, freq_2), by = c("n_1","word")) %>%
+   full_join(unigrams %>%
+                select(-n), by = c("word"))
+
+object.size(model_2)
+```
+
+```{r}
+sb_predict_2 <- function(input, model) {
+   input_words <- tail(unlist(tokenize_words(input)), 2)
+   
+   scores <- model %>%
+      mutate(score = case_when(n_2 == input_words[1] & n_1 == input_words[2] ~ freq_3,
+                               n_1 == input_words[2] ~ 0.4*freq_2,
+                               TRUE ~ 0.4*0.4*freq_1)) %>%
+      arrange(desc(score))
+   
+   return(scores)
+}
+```
+
+```{r}
+sb_predict_2("a lot", model_2)
+```
+
+```{r}
+sb_predict_3 <- function(input, model) {
+   input_words <- unlist(tokenize_words(input))
+   
+   tris <- model %>%
+      filter(n_2 == input_words[1] & n_1 == input_words[2]) %>%
+      select(word, freq_3)
+   
+   bis <- model %>%
+      filter(n_1 == input_words[2]) %>%
+      select(word, freq_2) %>%
+      distinct()
+   
+   scores <- model %>%
+      select(word, freq_1) %>%
+      distinct() %>%
+      full_join(bis, by = c("word")) %>%
+      full_join(tris, by = c("word")) %>%
+      mutate(score = case_when(!is.na(freq_3) ~ freq_3,
+                            !is.na(freq_2) ~ 0.4*freq_2,
+                            TRUE ~ 0.4*0.4*freq_1)) %>%
+      arrange(desc(score))
+   
+   return(scores)
+   
+}
+```
+
+```{r}
+sb_predict_3("a lot", model_2)
+```
+
+```{r}
+sb_predict_one <- function(input, model) {
+   input_words <- unlist(tokenize_words(input))
+   
+   tris <- model %>%
+      filter(n_2 == input_words[1] & n_1 == input_words[2]) %>%
+      select(word, freq_3)
+   
+   bis <- model %>%
+      filter(n_1 == input_words[2]) %>%
+      select(word, freq_2) %>%
+      distinct()
+   
+   scores <- model %>%
+      select(word, freq_1) %>%
+      distinct() %>%
+      full_join(bis, by = c("word")) %>%
+      full_join(tris, by = c("word")) %>%
+      mutate(score = case_when(!is.na(freq_3) ~ freq_3,
+                            !is.na(freq_2) ~ 0.4*freq_2,
+                            TRUE ~ 0.4*0.4*freq_1)) %>%
+      arrange(desc(score))
+   
+   return(scores$word[1])
+}
+```
+
+```{r}
+sb_predict_one("a lot", model_2)
+```
+
+```{r}
+testing_set <- read_csv(here("builds/B02_Testing_Datasets/testing_set_0.csv"),
+                        col_types = "icc")
+```
+
+```{r}
+test_3_gram <- testing_set %>%
+   unnest_tokens(ngram, sentence, token = "ngrams", n = 3) %>%
+   filter(!is.na(ngram)) %>%
+   mutate(word = word(ngram, -1)) %>%
+   mutate(ngram = str_trim(str_replace(ngram, paste0(word, "$"), ""))) %>%
+   select(ngram, word)
+```
+
+```{r}
+results <- test_3_gram %>%
+   mutate(guess = map_chr(ngram, sb_predict_one, model = model_2)) %>%
+   mutate(correct = word == guess)
+```
+
+```{r}
+results %>%
+   pull(correct) %>%
+   mean()
+```
+

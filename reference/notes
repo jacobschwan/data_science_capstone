@@ -1,0 +1,6 @@
+To Accomplish Katz-Backoff We Need:
+1. Understand & Implement a GT smoothing
+2. Apply GT Smoothing to estimate and alpha for each N-Gram
+3. 
+
+So we should end up vastly discounting trigrams that only appear once or twice and give that probability to bigrams.  To guess a word, we'll need to calculate a probability for each word in our dictionary.
